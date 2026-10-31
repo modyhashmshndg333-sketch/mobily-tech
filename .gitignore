@@ -4,3 +4,4 @@ uploads/
 .env
 *.sqlite
 *.db
+admin-password.txt

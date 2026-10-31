@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>موبايل تك للهواتف الذكية ومستلزماتها</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f6f7;color:#222;font-family:Arial,sans-serif}
+header{background:#153d35;color:white;padding:22px 14px;text-align:center}
+header h1{margin:0 0 8px;font-size:25px}
+header p{margin:5px;font-size:14px}
+.container{max-width:1000px;margin:auto;padding:15px}
+h2{color:#153d35;font-size:20px}
+#breadcrumb{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0}
+.crumb{border:0;background:#e4eee9;color:#153d35;padding:9px 12px;border-radius:8px}
+.categories,.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.category{background:white;padding:17px 10px;border-radius:12px;border:1px solid #e5e5e5;text-align:center;cursor:pointer;font-weight:bold;color:#153d35}
+.category span{display:block;font-size:25px;margin-bottom:8px}
+.product{background:white;border-radius:12px;overflow:hidden;border:1px solid #e8e8e8;padding-bottom:12px}
+.photo{height:145px;background:#f0f1f2;display:flex;align-items:center;justify-content:center;color:#999}
+.photo img{width:100%;height:100%;object-fit:contain}
+.product h3{font-size:15px;padding:0 10px;margin:12px 0}
+.price{color:#168a45;font-weight:bold;padding:0 10px}
+.stock{font-size:13px;padding:0 10px;color:#555}
+.order{display:block;text-decoration:none;background:#168a45;color:white;text-align:center;margin:10px;padding:11px 5px;border-radius:8px;font-weight:bold}
+.empty{text-align:center;color:#777;padding:25px;grid-column:1/-1}
+footer{background:#153d35;color:white;text-align:center;padding:22px 10px;margin-top:30px;font-size:14px}
+button{cursor:pointer}
+@media(min-width:650px){
+.categories{grid-template-columns:repeat(4,minmax(0,1fr))}
+.products{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>موبايل تك</h1>
+<p>للهواتف الذكية ومستلزماتها</p>
+<p>جوالات • إكسسوارات • صيانة • برمجة</p>
+</header>
+
+<main class="container">
+<h2>أقسام المتجر</h2>
+<div id="breadcrumb"></div>
+<div id="categories" class="categories">جارٍ تحميل الأقسام...</div>
+
+<h2 id="productTitle" hidden>المنتجات</h2>
+<div id="products" class="products"></div>
+</main>
+
+<footer>
+<strong>موبايل تك للهواتف الذكية ومستلزماتها</strong>
+<p>رحاب القفر جوار ثلاجة يحيى الرزامي</p>
+<p>للطلب والاستفسار: 772666853</p>
+</footer>
+
+<script>
+let allCategories=[];
+let allProducts=[];
+let currentCategory=null;
+let path=[];
+
+const phone="967772666853";
+
+async function loadStore(){
+  try{
+    const [catResponse,prodResponse]=await Promise.all([
+      fetch("/api/categories"),
+      fetch("/api/products")
+    ]);
+
+    if(!catResponse.ok||!prodResponse.ok) throw new Error();
+
+    allCategories=await catResponse.json();
+    allProducts=await prodResponse.json();
+
+    showCategories(null);
+    showBreadcrumb();
+  }catch(error){
+    document.getElementById("categories").textContent=
+      "تعذر تحميل المتجر. تأكد من تشغيل السيرفر.";
+  }
+}
+
+function showCategories(parentId){
+  currentCategory=parentId;
+
+  const box=document.getElementById("categories");
+  const children=allCategories.filter(c=>
+    (c.parent_id===null?null:Number(c.parent_id))===parentId
+  );
+
+  box.innerHTML="";
+
+  children.forEach(category=>{
+    const button=document.createElement("button");
+    button.className="category";
+
+    const icon=document.createElement("span");
+    icon.textContent="📁";
+
+    const name=document.createElement("div");
+    name.textContent=category.name;
+
+    button.append(icon,name);
+    button.onclick=()=>{
+      path.push(category.id);
+      showCategories(category.id);
+      showBreadcrumb();
+    };
+
+    box.appendChild(button);
+  });
+
+  if(children.length===0){
+    box.innerHTML='<div class="empty">لا توجد فروع داخل هذا القسم</div>';
+  }
+
+  showProducts(parentId);
+}
+
+function showProducts(categoryId){
+  const box=document.getElementById("products");
+  const title=document.getElementById("productTitle");
+
+  box.innerHTML="";
+
+  const products=allProducts.filter(p=>
+    Number(p.category_id)===Number(categoryId)
+  );
+
+  title.hidden=products.length===0;
+
+  products.forEach(p=>{
+    const card=document.createElement("div");
+    card.className="product";
+
+    const photo=document.createElement("div");
+    photo.className="photo";
+
+    if(p.image){
+      const img=document.createElement("img");
+      img.src=p.image;
+      img.alt=p.name;
+      img.onerror=()=>{photo.textContent="📱";};
+      photo.appendChild(img);
+    }else{
+      photo.textContent="📱";
+    }
+
+    const name=document.createElement("h3");
+    name.textContent=p.name;
+
+    const price=document.createElement("div");
+    price.className="price";
+    price.textContent=Number(p.price).toLocaleString("en-US")+" ريال";
+
+    const stock=document.createElement("div");
+    stock.className="stock";
+    stock.textContent=Number(p.stock)>0?
+      "المتوفر: "+p.stock+" قطع":
+      "غير متوفر حاليًا";
+
+    card.append(photo,name,price,stock);
+
+    if(Number(p.stock)>0){
+      const order=document.createElement("a");
+      order.className="order";
+      order.target="_blank";
+      order.rel="noopener";
+      order.href="https://wa.me/"+phone+
+        "?text="+encodeURIComponent(
+          "السلام عليكم، أريد طلب: "+p.name+
+          "، السعر: "+p.price+" ريال"
+        );
+      order.textContent="اطلب عبر واتساب";
+      card.appendChild(order);
+    }
+
+    box.appendChild(card);
+  });
+
+  if(products.length===0){
+    box.innerHTML='<div class="empty">لا توجد منتجات في هذا القسم حاليًا</div>';
+  }
+}
+
+function showBreadcrumb(){
+  const box=document.getElementById("breadcrumb");
+  box.innerHTML="";
+
+  const home=document.createElement("button");
+  home.className="crumb";
+  home.textContent="الرئيسية";
+  home.onclick=()=>{
+    path=[];
+    showCategories(null);
+    showBreadcrumb();
+  };
+  box.appendChild(home);
+
+  path.forEach((id,index)=>{
+    const category=allCategories.find(c=>c.id===id);
+    if(!category)return;
+
+    const button=document.createElement("button");
+    button.className="crumb";
+    button.textContent=category.name;
+
+    button.onclick=()=>{
+      path=path.slice(0,index+1);
+      showCategories(id);
+      showBreadcrumb();
+    };
+
+    box.appendChild(button);
+  });
+}
+
+loadStore();
+</script>
+</body>
+</html>

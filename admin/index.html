@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>إدارة موبايل تك</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f5f7;font-family:Arial,sans-serif;color:#222}
+header{background:#17252b;color:white;padding:20px;text-align:center}
+header h2{margin:0 0 8px}
+main{max-width:850px;margin:20px auto;padding:12px}
+.panel{background:white;padding:18px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 9px #0001}
+input,select,button{width:100%;padding:13px;margin:7px 0;border:1px solid #ddd;border-radius:8px;font-size:16px}
+button{background:#16834a;color:white;border:0;font-weight:bold;cursor:pointer}
+button.secondary{background:#315d78}
+button.danger{background:#b83232}
+.category{background:#f8fafb;border:1px solid #e0e5e8;border-radius:9px;padding:12px;margin:9px 0}
+.category-name{font-weight:bold;font-size:17px}
+.children{margin-right:22px;border-right:2px solid #d4e3dc;padding-right:12px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.actions button{width:auto;flex:1;font-size:13px}
+.small{color:#777;font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+<h2>موبايل تك</h2>
+<p>لوحة إدارة الأقسام والفروع</p>
+</header>
+
+<main>
+<section class="panel">
+<h3 id="formTitle">إضافة قسم جديد</h3>
+
+<input id="categoryName" placeholder="اكتب اسم القسم أو الفرع">
+
+<label>يتبع القسم:</label>
+<select id="parentCategory">
+<option value="">قسم رئيسي (بدون أب)</option>
+</select>
+
+<button id="saveButton" onclick="saveCategory()">＋ حفظ القسم</button>
+<button class="secondary" onclick="resetForm()">إلغاء التعديل</button>
+<p class="small">يمكنك إنشاء فروع داخل الفروع دون التقيد بمستوى معين.</p>
+</section>
+
+<section class="panel">
+<h3>أقسام المتجر وفروعه</h3>
+<div id="categoryTree">جارٍ تحميل الأقسام...</div>
+</section>
+</main>
+
+<script>
+let categories = [];
+let editingId = null;
+
+async function request(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "حدث خطأ");
+  return data;
+}
+
+async function loadCategories() {
+  try {
+    categories = await request("/api/categories");
+    renderCategories();
+    fillParentSelect();
+  } catch (error) {
+    document.getElementById("categoryTree").textContent = error.message;
+  }
+}
+
+function fillParentSelect() {
+  const select = document.getElementById("parentCategory");
+  const previous = select.value;
+  select.innerHTML = '<option value="">قسم رئيسي (بدون أب)</option>';
+
+  function addOptions(parentId, depth = 0) {
+    categories
+      .filter(c => c.parent_id === parentId)
+      .forEach(c => {
+        if (editingId !== c.id) {
+          const option = document.createElement("option");
+          option.value = c.id;
+          option.textContent = "— ".repeat(depth) + c.name;
+          select.appendChild(option);
+        }
+        addOptions(c.id, depth + 1);
+      });
+  }
+
+  addOptions(null);
+  if ([...select.options].some(o => o.value === previous)) {
+    select.value = previous;
+  }
+}
+
+function renderBranch(parentId, depth = 0) {
+  const children = categories.filter(c => c.parent_id === parentId);
+  if (!children.length) return "";
+
+  return children.map(c => `
+    <div class="category">
+      <div class="category-name">📁 ${escapeHTML(c.name)}</div>
+      <div class="actions">
+        <button class="secondary" onclick="startEdit(${c.id})">تعديل الاسم</button>
+        <button onclick="addChild(${c.id})">＋ إضافة فرع</button>
+        <button class="danger" onclick="deleteCategory(${c.id})">حذف</button>
+      </div>
+      <div class="children">${renderBranch(c.id, depth + 1)}</div>
+    </div>
+  `).join("");
+}
+
+function renderCategories() {
+  const tree = document.getElementById("categoryTree");
+  if (!categories.length) {
+    tree.innerHTML = "لا توجد أقسام بعد. أضف أول قسم من الأعلى.";
+    return;
+  }
+  tree.innerHTML = renderBranch(null);
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;",
+    '"':"&quot;", "'":"&#39;"
+  })[char]);
+}
+
+async function saveCategory() {
+  const name = document.getElementById("categoryName").value.trim();
+  const parentValue = document.getElementById("parentCategory").value;
+
+  if (!name) return alert("اكتب اسم القسم أولًا");
+
+  const body = { name };
+  if (parentValue) body.parent_id = Number(parentValue);
+
+  try {
+    if (editingId !== null) {
+      await request("/api/categories/" + editingId, {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+    } else {
+      await request("/api/categories", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+    }
+
+    resetForm();
+    await loadCategories();
+    alert("تم الحفظ بنجاح");
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function startEdit(id) {
+  const category = categories.find(c => c.id === id);
+  editingId = id;
+  document.getElementById("categoryName").value = category.name;
+  document.getElementById("formTitle").textContent = "تعديل اسم القسم";
+  document.getElementById("saveButton").textContent = "حفظ التعديل";
+  fillParentSelect();
+}
+
+function addChild(id) {
+  resetForm();
+  document.getElementById("parentCategory").value = String(id);
+  document.getElementById("categoryName").focus();
+}
+
+function resetForm() {
+  editingId = null;
+  document.getElementById("categoryName").value = "";
+  document.getElementById("parentCategory").value = "";
+  document.getElementById("formTitle").textContent = "إضافة قسم جديد";
+  document.getElementById("saveButton").textContent = "＋ حفظ القسم";
+  fillParentSelect();
+}
+
+async function deleteCategory(id) {
+  if (!confirm("هل تريد حذف هذا القسم؟")) return;
+  try {
+    await request("/api/categories/" + id, { method: "DELETE" });
+    await loadCategories();
+    alert("تم الحذف");
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+loadCategories();
+</script>
+</body>
+</html>
